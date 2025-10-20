@@ -6,7 +6,7 @@
 
 Extract toponyms (place names) from PDF files using spaCy's Named Entity Recognition (NER) with automatic language detection.
 
-## � Quick Start
+## 🚀 Quick Start
 
 ```bash
 # Clone the repository
@@ -24,7 +24,7 @@ python geoNamesFromPdf.py your_document.pdf
 
 That's it! On first run, the tool will guide you through automatic dependency installation.
 
-## �📋 Overview
+## 📋 Overview
 
 This tool analyzes PDF documents and automatically identifies geographic entities such as cities, countries, regions, and landmarks. It supports multiple languages and automatically detects the language of your document for optimal accuracy.
 
