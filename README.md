@@ -10,7 +10,7 @@ Extract toponyms (place names) from PDF files using spaCy's Named Entity Recogni
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/geoNamesFromPdf.git
+git clone https://github.com/lad-sapienza/geoNamesFromPdf.git
 cd geoNamesFromPdf
 
 # Create virtual environment (Python 3.12 recommended)
