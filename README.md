@@ -140,6 +140,35 @@ python geoNamesFromPdf.py --install-language fr
 python geoNamesFromPdf.py --help
 ```
 
+## 🆕 Gazetteer Support
+
+The tool now supports using a custom gazetteer (a list of place names) for place name extraction. This is especially useful for documents in dead languages or cases where spaCy's NER might not perform well.
+
+### Using a Gazetteer
+
+To use a gazetteer, provide the path to a plain text file containing one place name per line:
+
+```bash
+python geoNamesFromPdf.py document.pdf --gazetteer path/to/gazetteer.txt
+```
+
+- The script will match place names from the gazetteer in the text and combine them with spaCy's NER results.
+- If no gazetteer is provided, the script will rely solely on spaCy's NER.
+
+### Example Gazetteer File
+
+```text
+Babylon
+Nineveh
+Uruk
+Thebes
+Memphis
+```
+
+### Combining Results
+
+When a gazetteer is used, the tool merges the results from spaCy's NER and the gazetteer, ensuring comprehensive place name extraction.
+
 ## 🎬 First Run Experience
 
 On your first run, if dependencies are missing, you'll see:

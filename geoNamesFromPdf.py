@@ -4,6 +4,7 @@ sys.path.insert(0, "./libs")
 import argparse
 import subprocess
 import os
+import re
 
 # Configuration file to track if initial setup was completed
 SETUP_MARKER_FILE = os.path.join(os.path.dirname(__file__) or '.', '.setup_complete')
@@ -289,6 +290,24 @@ def extract_toponyms(text, nlp_model):
     toponyms = [ent.text for ent in doc.ents if ent.label_ in ("GPE", "LOC", "FAC")]
     return sorted(set(toponyms))  # unique + sorted
 
+def load_gazetteer(file_path):
+    """Load gazetteer from a file into a set."""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return set(line.strip() for line in f if line.strip())
+    except Exception as e:
+        print(f"Error loading gazetteer: {e}")
+        return set()
+
+def match_gazetteer(text, gazetteer):
+    """Find matches for gazetteer entries in the text."""
+    matches = set()
+    for place in gazetteer:
+        # Use word boundaries to ensure exact matches
+        if re.search(rf"\\b{re.escape(place)}\\b", text, re.IGNORECASE):
+            matches.add(place)
+    return matches
+
 if __name__ == "__main__":
     # Set up command-line argument parsing
     parser = argparse.ArgumentParser(description="Extract toponyms (place names) from PDF files using spaCy NER.")
@@ -297,6 +316,7 @@ if __name__ == "__main__":
     parser.add_argument("--list-languages", action="store_true", help="List all available language models and exit")
     parser.add_argument("--install-language", metavar="LANG_CODE", help="Install language model for the specified language code (e.g., it, es, fr, de) and exit")
     parser.add_argument("--skip-setup", action="store_true", help="Skip first-run setup check")
+    parser.add_argument("--gazetteer", help="Path to a gazetteer file for custom place name extraction")
     
     # Parse command-line arguments
     args = parser.parse_args()
@@ -321,6 +341,13 @@ if __name__ == "__main__":
     if not args.pdf_path:
         parser.error("pdf_path is required unless --list-languages or --install-language is specified")
     
+    # Load gazetteer if provided
+    gazetteer = set()
+    if args.gazetteer:
+        print(f"📖 Loading gazetteer from: {args.gazetteer}")
+        gazetteer = load_gazetteer(args.gazetteer)
+        print(f"✅ Loaded {len(gazetteer)} entries from gazetteer.")
+
     try:
         text = extract_text_from_pdf(args.pdf_path)
         
@@ -336,8 +363,13 @@ if __name__ == "__main__":
         nlp_model = load_nlp_model(language)
         print(f"🧠 Using model: {nlp_model.meta['name']} v{nlp_model.meta['version']}")
         
-        # Extract toponyms
+        # Extract toponyms using spaCy
         places = extract_toponyms(text, nlp_model)
+
+        # Match gazetteer entries if provided
+        if gazetteer:
+            gazetteer_matches = match_gazetteer(text, gazetteer)
+            places = sorted(set(places).union(gazetteer_matches))
 
         print(f"\n📍 Toponyms found in the PDF ({len(places)} total):\n")
         for p in places:
