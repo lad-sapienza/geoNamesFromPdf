@@ -22,6 +22,8 @@ source venv/bin/activate  # On macOS/Linux
 python geoNamesFromPdf.py your_document.pdf
 ```
 
+Tip: if you'd like a one-step setup (clone, create a venv, install deps and optionally run the GUI), see `scripts/setup_and_run.sh` below — it's helpful for non-technical users.
+
 That's it! On first run, the tool will guide you through automatic dependency installation.
 
 ## 📋 Overview
@@ -168,6 +170,90 @@ Memphis
 ### Combining Results
 
 When a gazetteer is used, the tool merges the results from spaCy's NER and the gazetteer, ensuring comprehensive place name extraction.
+
+## 🖥️ GUI (PyQt) — Usage
+
+A simple graphical interface is provided in `gui.py` for users who prefer not to use the command line. The GUI exposes the same functionality and adds interactive list management.
+
+How to run the GUI
+
+1. Activate your virtual environment (if you created one):
+```bash
+source venv/bin/activate
+```
+2. Install dependencies if you haven't already (from project root):
+```bash
+pip install -r requirements.txt
+pip install PyQt5
+```
+3. Launch the GUI:
+```bash
+python gui.py
+```
+
+Main features and layout
+
+- "Select PDF": choose a PDF to process (or drag & drop a PDF onto the window). The last selected PDF is remembered so you can re-run without reselecting.
+- Gazetteer (left column): load a gazetteer (.txt) or add/remove included place names manually. Use "Save Included to File" to export the list.
+- Exclude list (right column): load or edit a list of toponyms to exclude from results. Use "Save Excluded to File" to export.
+- "Process PDF" button runs extraction and shows a scrollable list of extracted toponyms below.
+- Results are interactive: each extracted toponym has Add and Remove buttons. "Add" appends the item to the included gazetteer; "Remove" appends it to the exclude list.
+
+Notes and tips
+
+- Gazetteeer files should be plain UTF-8 text with one place name per line.
+- The GUI supports both spaCy-based extraction and gazetteer matching; if no gazetteer is loaded the tool still runs spaCy NER.
+- For a lightweight distribution, consider using the GUI in "gazetteer-only" mode by avoiding installation of spaCy models — this reduces package size (see the Packaging section below).
+ 
+## ⚙️ Quick setup script
+
+A small helper script is provided at `scripts/setup_and_run.sh` to make it easy for non-technical users to get started. The script will clone (or update) the repository, create a virtual environment, install Python dependencies from `requirements.txt`, and — optionally — run the GUI.
+
+Basic usage (from your shell):
+
+```bash
+# Run setup locally and then open the GUI
+./scripts/setup_and_run.sh --run-gui
+
+# Make the script executable if needed
+chmod +x scripts/setup_and_run.sh
+./scripts/setup_and_run.sh --run-gui
+```
+
+Download-and-run (one-liner, pipes the raw script to bash):
+
+```bash
+curl -sL https://raw.githubusercontent.com/lad-sapienza/geoNamesFromPdf/GUI-PyQtPySide/scripts/setup_and_run.sh \
+   | bash -s -- --run-gui
+```
+
+Script flags
+
+- `--run-gui` — run the GUI after setup (invokes `venv/bin/python gui.py`).
+- `--dest <dir>` — destination directory to clone/update (default: `~/geoNamesFromPdf`).
+- `--branch <branch>` — git branch to checkout (default: `GUI-PyQtPySide`).
+- `--repo <url>` — repository URL (default: the GitHub repo).
+- `--python <python_cmd>` — which Python executable to use for creating the venv (default: `python3`).
+
+- `--run-gui` — run the GUI after setup (invokes `venv/bin/python gui.py`).
+- `--dest <dir>` — destination directory to clone/update (default: `~/geoNamesFromPdf`).
+- `--branch <branch>` — git branch to checkout (default: `GUI-PyQtPySide`).
+- `--repo <url>` — repository URL (default: the GitHub repo).
+- `--python <python_cmd>` — which Python executable to use for creating the venv (default: `python3`).
+
+Additional flags:
+
+- `--install-spacy-models` — after installing Python packages, download a set of spaCy models (explicit opt-in). Default models: `en_core_web_lg,it_core_news_lg`.
+- `--spacy-models <comma_separated_models>` — specify a comma-separated list of spaCy model names to download (e.g. `en_core_web_lg,es_core_news_lg`).
+- `--skip-pip` — skip the `pip install -r requirements.txt` step (useful for fast smoke-tests or when installing packages manually).
+
+Notes & caveats:
+
+- The script requires `git` and a working Python 3 executable in PATH. If you use pyenv, prefer passing `--python /full/path/to/python` or run the script after activating the desired Python environment.
+- The script does not automatically download large spaCy language models. If you need spaCy models, install them manually or add the `--install-spacy-models` step when prompted.
+- Running shell scripts from the internet with `curl | bash` is convenient but has security implications; review the script before executing if unsure.
+
+
 
 ## 🎬 First Run Experience
 

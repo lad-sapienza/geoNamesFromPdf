@@ -284,10 +284,15 @@ def extract_text_from_pdf(pdf_path):
     text = " ".join(page.get_text() for page in doc)
     return text
 
-def extract_toponyms(text, nlp_model):
-    """Extract place names using spaCy NER."""
+def extract_toponyms(text, nlp_model, exclude_list=None):
+    """Extract place names using spaCy NER, excluding items in the exclude list."""
     doc = nlp_model(text)
     toponyms = [ent.text for ent in doc.ents if ent.label_ in ("GPE", "LOC", "FAC")]
+
+    # Remove excluded items
+    if exclude_list:
+        toponyms = [toponym for toponym in toponyms if toponym not in exclude_list]
+
     return sorted(set(toponyms))  # unique + sorted
 
 def load_gazetteer(file_path):
@@ -317,6 +322,7 @@ if __name__ == "__main__":
     parser.add_argument("--install-language", metavar="LANG_CODE", help="Install language model for the specified language code (e.g., it, es, fr, de) and exit")
     parser.add_argument("--skip-setup", action="store_true", help="Skip first-run setup check")
     parser.add_argument("--gazetteer", help="Path to a gazetteer file for custom place name extraction")
+    parser.add_argument("--exclude", help="Comma-separated list of toponyms to exclude from extraction")
     
     # Parse command-line arguments
     args = parser.parse_args()
@@ -348,6 +354,12 @@ if __name__ == "__main__":
         gazetteer = load_gazetteer(args.gazetteer)
         print(f"✅ Loaded {len(gazetteer)} entries from gazetteer.")
 
+    # Prepare exclude list
+    exclude_list = set()
+    if args.exclude:
+        exclude_list = set(item.strip() for item in args.exclude.split(","))
+        print(f"🚫 Excluding toponyms: {', '.join(exclude_list)}")
+    
     try:
         text = extract_text_from_pdf(args.pdf_path)
         
@@ -364,7 +376,7 @@ if __name__ == "__main__":
         print(f"🧠 Using model: {nlp_model.meta['name']} v{nlp_model.meta['version']}")
         
         # Extract toponyms using spaCy
-        places = extract_toponyms(text, nlp_model)
+        places = extract_toponyms(text, nlp_model, exclude_list)
 
         # Match gazetteer entries if provided
         if gazetteer:
