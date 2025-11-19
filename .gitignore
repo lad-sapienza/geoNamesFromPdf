@@ -225,3 +225,5 @@ $RECYCLE.BIN/
 .directory
 .Trash-*
 .nfs*
+included.txt
+excluded.txt
