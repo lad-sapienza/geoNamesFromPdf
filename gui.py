@@ -7,7 +7,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QDragEnterEvent, QDropEvent
 
 # Import core processing functions from the main script
-from geoNamesFromPdf import extract_text_from_pdf, extract_toponyms, load_nlp_model, detect_language
+from geoNamesFromPdf import extract_text_from_pdf, extract_toponyms, load_nlp_model, detect_language, parse_page_ranges
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -35,6 +35,17 @@ class MainWindow(QMainWindow):
 
         self.pdf_path_label = QLabel("No PDF selected.")
         self.top_pdf_layout.addWidget(self.pdf_path_label)
+
+        # Page range input
+        self.page_range_layout = QHBoxLayout()
+        self.page_range_label = QLabel("Page range (optional):")
+        self.page_range_layout.addWidget(self.page_range_label)
+        
+        from PyQt5.QtWidgets import QLineEdit
+        self.page_range_input = QLineEdit()
+        self.page_range_input.setPlaceholderText("e.g., 5, 5-10, or 5-10, 12-14")
+        self.page_range_layout.addWidget(self.page_range_input)
+        self.top_pdf_layout.addLayout(self.page_range_layout)
 
         self.main_layout.addLayout(self.top_pdf_layout)
 
@@ -235,7 +246,18 @@ class MainWindow(QMainWindow):
         self.results_layout_parent_clear()
 
         try:
-            text = extract_text_from_pdf(self.pdf_path)
+            # Parse page ranges if specified
+            page_ranges = None
+            page_spec = self.page_range_input.text().strip()
+            if page_spec:
+                try:
+                    page_ranges = parse_page_ranges(page_spec)
+                    self.pdf_path_label.setText(f"Processing pages: {page_spec}")
+                except ValueError as e:
+                    QMessageBox.critical(self, "Error", f"Invalid page range: {e}")
+                    return
+            
+            text = extract_text_from_pdf(self.pdf_path, page_ranges)
             language = detect_language(text)
             self.pdf_path_label.setText(f"Detected language: {language}")
 

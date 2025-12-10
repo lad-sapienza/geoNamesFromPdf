@@ -278,10 +278,55 @@ def detect_language(text):
     except:
         return 'en'  # Default to English if detection fails
 
-def extract_text_from_pdf(pdf_path):
-    """Extract full text from PDF using PyMuPDF."""
+def parse_page_ranges(page_spec):
+    """Parse page specification like '5', '5-10', or '5-10, 12-14' into a set of page numbers (0-indexed).
+    
+    Args:
+        page_spec: String with page numbers/ranges (1-indexed, user-facing)
+    
+    Returns:
+        Set of page indices (0-indexed for fitz)
+    """
+    if not page_spec or not page_spec.strip():
+        return None
+    
+    pages = set()
+    try:
+        for part in page_spec.split(','):
+            part = part.strip()
+            if '-' in part:
+                start, end = part.split('-', 1)
+                start_idx = int(start.strip()) - 1  # Convert to 0-indexed
+                end_idx = int(end.strip()) - 1
+                if start_idx < 0 or end_idx < 0 or start_idx > end_idx:
+                    raise ValueError(f"Invalid range: {part}")
+                pages.update(range(start_idx, end_idx + 1))
+            else:
+                page_num = int(part.strip()) - 1  # Convert to 0-indexed
+                if page_num < 0:
+                    raise ValueError(f"Invalid page number: {part}")
+                pages.add(page_num)
+        return pages
+    except Exception as e:
+        raise ValueError(f"Invalid page specification '{page_spec}': {e}")
+
+def extract_text_from_pdf(pdf_path, page_ranges=None):
+    """Extract text from PDF using PyMuPDF, optionally limited to specific pages.
+    
+    Args:
+        pdf_path: Path to PDF file
+        page_ranges: Set of page indices (0-indexed) to extract, or None for all pages
+    
+    Returns:
+        Extracted text as string
+    """
     doc = fitz.open(pdf_path)
-    text = " ".join(page.get_text() for page in doc)
+    if page_ranges is None:
+        # Extract all pages
+        text = " ".join(page.get_text() for page in doc)
+    else:
+        # Extract only specified pages
+        text = " ".join(doc[i].get_text() for i in sorted(page_ranges) if i < len(doc))
     return text
 
 def extract_toponyms(text, nlp_model, exclude_list=None):
@@ -318,6 +363,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract toponyms (place names) from PDF files using spaCy NER.")
     parser.add_argument("pdf_path", nargs="?", help="Path to the PDF file to process")
     parser.add_argument("-l", "--language", help="Force specific language (en, it, etc.). If not specified, language will be auto-detected.")
+    parser.add_argument("-p", "--pages", help="Page range(s) to process (e.g., '5', '5-10', '5-10, 12-14'). If not specified, all pages are processed.")
     parser.add_argument("--list-languages", action="store_true", help="List all available language models and exit")
     parser.add_argument("--install-language", metavar="LANG_CODE", help="Install language model for the specified language code (e.g., it, es, fr, de) and exit")
     parser.add_argument("--skip-setup", action="store_true", help="Skip first-run setup check")
@@ -361,7 +407,17 @@ if __name__ == "__main__":
         print(f"🚫 Excluding toponyms: {', '.join(exclude_list)}")
     
     try:
-        text = extract_text_from_pdf(args.pdf_path)
+        # Parse page ranges if specified
+        page_ranges = None
+        if args.pages:
+            try:
+                page_ranges = parse_page_ranges(args.pages)
+                print(f"📄 Processing pages: {args.pages}")
+            except ValueError as e:
+                print(f"❌ Error: {e}")
+                sys.exit(1)
+        
+        text = extract_text_from_pdf(args.pdf_path, page_ranges)
         
         # Detect or use specified language
         if args.language:

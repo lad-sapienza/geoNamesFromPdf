@@ -36,6 +36,7 @@ This tool analyzes PDF documents and automatically identifies geographic entitie
 - 🔍 **High accuracy** - Uses spaCy's large language models for NER
 - 🎯 **Smart detection** - Extracts cities, countries, regions, and landmarks
 - 📄 **PDF processing** - Works directly with PDF files
+- 📑 **Page range filtering** - Process only specific pages or ranges to exclude introductions, bibliographies, etc.
 - 🚀 **Easy to use** - Simple command-line interface
 - ⚡ **Zero-friction setup** - Automatic dependency installation on first run
 - 🔧 **Flexible** - Manual or automatic language model installation
@@ -107,6 +108,21 @@ Extract toponyms from a PDF with automatic language detection:
 
 ```bash
 python geoNamesFromPdf.py document.pdf
+```
+
+### Process Specific Pages
+
+Limit extraction to specific page ranges (useful to exclude title pages, bibliographies, etc.):
+
+```bash
+# Single page
+python geoNamesFromPdf.py document.pdf -p 5
+
+# Page range
+python geoNamesFromPdf.py document.pdf -p 5-10
+
+# Multiple ranges
+python geoNamesFromPdf.py document.pdf -p "5-10, 12-14, 20-25"
 ```
 
 ### Specify Language
@@ -194,6 +210,7 @@ python gui.py
 Main features and layout
 
 - "Select PDF": choose a PDF to process (or drag & drop a PDF onto the window). The last selected PDF is remembered so you can re-run without reselecting.
+- **Page range**: optional field to specify which pages to process (e.g., "5", "5-10", or "5-10, 12-14"). Leave blank to process all pages.
 - Gazetteer (left column): load a gazetteer (.txt) or add/remove included place names manually. Use "Save Included to File" to export the list.
 - Exclude list (right column): load or edit a list of toponyms to exclude from results. Use "Save Excluded to File" to export.
 - "Process PDF" button runs extraction and shows a scrollable list of extracted toponyms below.
@@ -380,7 +397,32 @@ python geoNamesFromPdf.py --install-language es
 
 Note: Before installing, make sure to uncomment the Spanish entry in the `LANGUAGE_MODELS` dictionary in `geoNamesFromPdf.py`.
 
-### Example 5: Using with pyenv
+### Example 5: Processing Specific Pages
+
+Extract toponyms only from specific pages or page ranges:
+
+```bash
+# Process only pages 10-50 (excluding front matter and bibliography)
+python geoNamesFromPdf.py document.pdf -p "10-50"
+```
+
+**Output:**
+```
+📄 Processing pages: 10-50
+🌐 Detected language: en
+🧠 Using model: core_web_lg v3.8.0
+
+📍 Toponyms found in the PDF (15 total):
+
+- Athens
+- Egypt
+- Greece
+- Mediterranean
+- Rome
+...
+```
+
+### Example 6: Using with pyenv
 
 If you use pyenv and encounter "python: command not found", use the full path:
 
@@ -438,8 +480,9 @@ To add languages not listed above, edit the `LANGUAGE_MODELS` dictionary in `geo
 ## 🔧 Command-Line Options
 
 ```
-usage: geoNamesFromPdf.py [-h] [-l LANGUAGE] [--list-languages]
+usage: geoNamesFromPdf.py [-h] [-l LANGUAGE] [-p PAGES] [--list-languages]
                           [--install-language LANG_CODE] [--skip-setup]
+                          [--gazetteer GAZETTEER] [--exclude EXCLUDE]
                           [pdf_path]
 
 positional arguments:
@@ -450,6 +493,12 @@ options:
   -l LANGUAGE, --language LANGUAGE
                         Force specific language (en, it, etc.).
                         If not specified, language will be auto-detected.
+  -p PAGES, --pages PAGES
+                        Page range(s) to process (e.g., '5', '5-10', '5-10, 12-14').
+                        If not specified, all pages are processed.
+  --gazetteer GAZETTEER
+                        Path to a gazetteer file for custom place name extraction
+  --exclude EXCLUDE     Comma-separated list of toponyms to exclude from extraction
   --list-languages      List all available language models and exit
   --install-language LANG_CODE
                         Install language model for the specified language code
