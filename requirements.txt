@@ -1,4 +1,11 @@
-PyMuPDF>=1.24.0
+PyMuPDF>=1.24.3
 spacy>=3.8.0
 langdetect>=1.0.9
 PyQt5>=5.15.0
+
+# --- Optional ---
+# Alternative offline extraction engines (see README "Extraction Engines"):
+#   pip install spacy-transformers      # --engine spacy-trf
+#   pip install gliner gliner-spacy     # --engine gliner
+# Running the test suite:
+#   pip install pytest

@@ -1,13 +1,41 @@
 import sys
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QFileDialog, QVBoxLayout, QPushButton, QLabel,
-    QTextEdit, QWidget, QHBoxLayout, QScrollArea, QInputDialog, QMessageBox
+    QTextEdit, QWidget, QHBoxLayout, QScrollArea, QInputDialog, QMessageBox,
+    QLineEdit
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QDragEnterEvent, QDropEvent
 
-# Import core processing functions from the main script
-from geoNamesFromPdf import extract_text_from_pdf, extract_toponyms, load_nlp_model, detect_language, parse_page_ranges
+# All extraction logic lives in core.py and is shared with the CLI.
+import core
+
+
+class AnalysisWorker(QThread):
+    """Run core.analyze() off the UI thread so the window stays responsive."""
+
+    finished = pyqtSignal(object)   # core.AnalysisResult
+    failed = pyqtSignal(str)
+
+    def __init__(self, pdf_path, *, pages, gazetteer, exclude):
+        super().__init__()
+        self.pdf_path = pdf_path
+        self.pages = pages
+        self.gazetteer = gazetteer
+        self.exclude = exclude
+
+    def run(self):
+        try:
+            result = core.analyze(
+                self.pdf_path,
+                pages=self.pages or None,
+                gazetteer=self.gazetteer or None,
+                exclude=self.exclude or None,
+            )
+            self.finished.emit(result)
+        except Exception as exc:  # surfaced in a dialog by the main window
+            self.failed.emit(str(exc))
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -40,8 +68,7 @@ class MainWindow(QMainWindow):
         self.page_range_layout = QHBoxLayout()
         self.page_range_label = QLabel("Page range (optional):")
         self.page_range_layout.addWidget(self.page_range_label)
-        
-        from PyQt5.QtWidgets import QLineEdit
+
         self.page_range_input = QLineEdit()
         self.page_range_input.setPlaceholderText("e.g., 5, 5-10, or 5-10, 12-14")
         self.page_range_layout.addWidget(self.page_range_input)
@@ -129,6 +156,9 @@ class MainWindow(QMainWindow):
         self.process_button.clicked.connect(self.process_pdf)
         self.main_layout.addWidget(self.process_button)
 
+        self.status_label = QLabel("")
+        self.main_layout.addWidget(self.status_label)
+
         # --- Scrollable results area (takes remaining space) ---
         self.results_area = QScrollArea()
         self.results_area.setWidgetResizable(True)
@@ -147,6 +177,7 @@ class MainWindow(QMainWindow):
         self.gazetteer_path = None
         self.gazetteer_data = []
         self.exclude_list = []
+        self.worker = None
 
     # ----------------- File selection and list management -----------------
     def select_pdf(self):
@@ -157,7 +188,8 @@ class MainWindow(QMainWindow):
             self.pdf_path_label.setText(f"Selected PDF: {file_path}")
 
     def select_gazetteer(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select Gazetteer", "", "Text Files (*.txt)")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select Gazetteer", "", "Gazetteer files (*.txt *.csv *.tsv)")
         if file_path:
             self.gazetteer_path = file_path
             self.gazetteer_path_label.setText(f"Loaded Gazetteer: {file_path}")
@@ -165,8 +197,7 @@ class MainWindow(QMainWindow):
 
     def load_gazetteer(self, file_path):
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                self.gazetteer_data = [line.strip() for line in f if line.strip()]
+            self.gazetteer_data = [e.name for e in core.load_gazetteer(file_path)]
             self.gazetteer_preview.setPlainText("\n".join(self.gazetteer_data))
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load gazetteer: {e}")
@@ -243,58 +274,76 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, "Info", "Please select a PDF first.")
                 return
 
-        self.results_layout_parent_clear()
+        if self.worker and self.worker.isRunning():
+            return
 
-        try:
-            # Parse page ranges if specified
-            page_ranges = None
-            page_spec = self.page_range_input.text().strip()
-            if page_spec:
-                try:
-                    page_ranges = parse_page_ranges(page_spec)
-                    self.pdf_path_label.setText(f"Processing pages: {page_spec}")
-                except ValueError as e:
-                    QMessageBox.critical(self, "Error", f"Invalid page range: {e}")
-                    return
-            
-            text = extract_text_from_pdf(self.pdf_path, page_ranges)
-            language = detect_language(text)
-            self.pdf_path_label.setText(f"Detected language: {language}")
-
-            nlp_model = load_nlp_model(language)
-
-            places = extract_toponyms(text, nlp_model, exclude_list=self.exclude_list)
-
-            # include gazetteer matches
-            if self.gazetteer_data:
-                gaz_matches = [p for p in self.gazetteer_data if p in text]
-                places = sorted(set(places).union(gaz_matches))
-
-            if not places:
-                label = QLabel("No toponyms found.")
-                self.results_layout.addWidget(label)
+        # Validate the page range up front for immediate feedback.
+        page_spec = self.page_range_input.text().strip()
+        if page_spec:
+            try:
+                core.parse_page_ranges(page_spec)
+            except ValueError as e:
+                QMessageBox.critical(self, "Error", f"Invalid page range: {e}")
                 return
 
-            # display each place with Add/Remove buttons
-            for place in places:
-                row = QHBoxLayout()
-                lbl = QLabel(place)
-                row.addWidget(lbl)
+        self.results_layout_parent_clear()
+        self.process_button.setEnabled(False)
+        self.status_label.setText("Processing… (this can take a while for large PDFs)")
 
-                btn_add = QPushButton("Add")
-                btn_add.clicked.connect(lambda _, p=place: self._on_add_from_results(p))
-                row.addWidget(btn_add)
+        gazetteer = [core.GazEntry(name=n) for n in self.gazetteer_data] or None
+        self.worker = AnalysisWorker(
+            self.pdf_path,
+            pages=page_spec,
+            gazetteer=gazetteer,
+            exclude=list(self.exclude_list),
+        )
+        self.worker.finished.connect(self._on_analysis_done)
+        self.worker.failed.connect(self._on_analysis_failed)
+        self.worker.start()
 
-                btn_remove = QPushButton("Remove")
-                btn_remove.clicked.connect(lambda _, p=place: self._on_remove_from_results(p))
-                row.addWidget(btn_remove)
+    def _on_analysis_failed(self, message):
+        self.process_button.setEnabled(True)
+        self.status_label.setText("")
+        QMessageBox.critical(self, "Error", f"Error processing PDF: {message}")
 
-                container = QWidget()
-                container.setLayout(row)
-                self.results_layout.addWidget(container)
+    def _on_analysis_done(self, result):
+        self.process_button.setEnabled(True)
 
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error processing PDF: {e}")
+        bits = []
+        if result.language:
+            bits.append(f"language: {result.language}")
+        if result.model:
+            bits.append(f"model: {result.model}")
+        bits.append(f"{len(result.toponyms)} toponym(s)")
+        self.status_label.setText(" · ".join(bits))
+        for warning in result.warnings:
+            self.status_label.setText(self.status_label.text() + f"  ⚠️ {warning}")
+
+        if not result.toponyms:
+            self.results_layout.addWidget(QLabel("No toponyms found."))
+            return
+
+        # display each place with Add/Remove buttons
+        for topo in result.toponyms:
+            row = QHBoxLayout()
+
+            pages = ",".join(map(str, sorted(topo.pages)))
+            caption = topo.name
+            detail = f"  ({topo.label or '?'}, x{topo.count}" + (f", p.{pages}" if pages else "") + ")"
+            lbl = QLabel(caption + detail)
+            row.addWidget(lbl, 1)
+
+            btn_add = QPushButton("Add")
+            btn_add.clicked.connect(lambda _, p=topo.name: self._on_add_from_results(p))
+            row.addWidget(btn_add)
+
+            btn_remove = QPushButton("Remove")
+            btn_remove.clicked.connect(lambda _, p=topo.name: self._on_remove_from_results(p))
+            row.addWidget(btn_remove)
+
+            container = QWidget()
+            container.setLayout(row)
+            self.results_layout.addWidget(container)
 
     def _on_add_from_results(self, place):
         if place not in self.gazetteer_data:
@@ -311,7 +360,7 @@ class MainWindow(QMainWindow):
         for i in reversed(range(self.results_layout.count())):
             widget = self.results_layout.itemAt(i).widget()
             if widget:
-                widget.setParent(None)
+                widget.deleteLater()
 
     # ----------------- drag & drop -----------------
     def dragEnterEvent(self, event: QDragEnterEvent):
@@ -321,15 +370,17 @@ class MainWindow(QMainWindow):
     def dropEvent(self, event: QDropEvent):
         for url in event.mimeData().urls():
             file_path = url.toLocalFile()
-            if file_path.lower().endswith('.pdf'):
+            lower = file_path.lower()
+            if lower.endswith('.pdf'):
                 self.pdf_path = file_path
                 self.last_pdf_path = file_path
                 self.pdf_path_label.setText(f"Selected PDF: {file_path}")
-            elif file_path.lower().endswith('.txt'):
-                # treat dropped .txt as gazetteer by default
+            elif lower.endswith(('.txt', '.csv', '.tsv')):
+                # treat dropped text file as gazetteer by default
                 self.gazetteer_path = file_path
                 self.gazetteer_path_label.setText(f"Loaded Gazetteer: {file_path}")
                 self.load_gazetteer(file_path)
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

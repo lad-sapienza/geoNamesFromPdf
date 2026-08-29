@@ -39,7 +39,7 @@ To add support for a new language:
 2. **Test the model** - Ensure it has good NER support
 3. **Update the code**:
    ```python
-   # In geoNamesFromPdf.py, add to LANGUAGE_MODELS dict:
+   # In core.py, add to LANGUAGE_MODELS dict:
    LANGUAGE_MODELS = {
        # ...existing languages...
        'xx': 'xx_core_news_lg',  # Your language
@@ -102,7 +102,14 @@ def extract_toponyms(text, nlp_model):
 
 ## 🧪 Testing
 
-Before submitting:
+Run the offline unit-test suite (no model downloads needed):
+
+```bash
+pip install pytest
+python -m pytest
+```
+
+Then, before submitting:
 
 1. **Test basic functionality**
    ```bash

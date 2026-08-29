@@ -158,22 +158,75 @@ python geoNamesFromPdf.py --install-language fr
 python geoNamesFromPdf.py --help
 ```
 
+### Output Formats
+
+By default results are printed as a plain list. Use `-f/--format` (and optionally
+`-o/--output FILE`) to get structured, GIS-ready output:
+
+```bash
+# Plain list (default), with label / mention count / pages
+python geoNamesFromPdf.py document.pdf --details
+
+# CSV: name,label,count,pages,sources,gazetteer_id,lat,lon
+python geoNamesFromPdf.py document.pdf -f csv -o places.csv
+
+# JSON (full result, including per-page provenance)
+python geoNamesFromPdf.py document.pdf -f json -o places.json
+
+# GeoJSON — emits only toponyms that carry coordinates (see Gazetteer below)
+python geoNamesFromPdf.py document.pdf --gazetteer pleiades.tsv -f geojson -o places.geojson
+```
+
+Every toponym now carries how many times it occurred, on which pages, and where
+it came from (`ner:GPE`, `ner:LOC`, `gazetteer`, …).
+
+### Extraction Engines (all offline, no external services)
+
+`--engine` selects how place names are recognised. All engines run locally.
+
+| Engine | Flag | Notes |
+|--------|------|-------|
+| spaCy CNN (default) | `--engine spacy` | Fast, ~500 MB per language. NER-only pipeline. |
+| spaCy transformer | `--engine spacy-trf` | Better accuracy on modern text. Needs `pip install spacy-transformers` and a `_trf` model. |
+| GLiNER | `--engine gliner` | Label-driven local model — extract exactly the categories you ask for. Needs `pip install gliner gliner-spacy`. |
+| Gazetteer only | `--no-ner --gazetteer FILE` | No model, no language detection — deterministic matching against your list. Ideal for ancient/dead languages. |
+
 ## 🆕 Gazetteer Support
 
-The tool now supports using a custom gazetteer (a list of place names) for place name extraction. This is especially useful for documents in dead languages or cases where spaCy's NER might not perform well.
+You can supply a custom gazetteer (a list of place names, optionally with
+identifiers and coordinates) to complement — or entirely replace — spaCy's NER.
+This is especially useful for documents in dead languages, or where NER performs
+poorly.
 
 ### Using a Gazetteer
 
-To use a gazetteer, provide the path to a plain text file containing one place name per line:
+Plain list — one place name per line:
 
 ```bash
 python geoNamesFromPdf.py document.pdf --gazetteer path/to/gazetteer.txt
 ```
 
-- The script will match place names from the gazetteer in the text and combine them with spaCy's NER results.
-- If no gazetteer is provided, the script will rely solely on spaCy's NER.
+- Matching is single-pass, case-insensitive, respects word boundaries (so `Como` does **not** match inside `Comodo`) and understands multi-word names (the longest match wins).
+- Results are merged with the NER output; each toponym records whether it came from `ner`, the `gazetteer`, or both.
+- If no gazetteer is provided, the script relies solely on the selected NER engine.
 
-### Example Gazetteer File
+### Gazetteer With Coordinates (CSV / TSV)
+
+A `.csv` or `.tsv` gazetteer can carry identifiers and coordinates, which are
+then attached to the results and exported by `-f geojson` / `-f csv`. Recognised
+column headers (case-insensitive): `name`/`toponym`/`title`, `label`/`type`,
+`id`/`uri`, `lat`/`latitude`, `lon`/`longitude`.
+
+```text
+name	id	lat	lon
+Butrint	pleiades:530798	39.7456	20.0206
+Epirus	pleiades:991380	39.5000	20.5000
+```
+
+This pairs well with a local extract of a historical gazetteer such as
+[Pleiades](https://pleiades.stoa.org/) or GeoNames.
+
+### Example Gazetteer File (plain)
 
 ```text
 Babylon
@@ -183,9 +236,14 @@ Thebes
 Memphis
 ```
 
-### Combining Results
+### Gazetteer-Only Mode
 
-When a gazetteer is used, the tool merges the results from spaCy's NER and the gazetteer, ensuring comprehensive place name extraction.
+For Latin, Ancient Greek and other languages spaCy has no model for, skip NER
+entirely:
+
+```bash
+python geoNamesFromPdf.py document.pdf --no-ner --gazetteer ancient_places.txt
+```
 
 ## 🖥️ GUI (PyQt) — Usage
 
@@ -315,7 +373,7 @@ python geoNamesFromPdf.py storia_italiana.pdf
 **Output:**
 ```
 🌐 Detected language: it
-🧠 Using model: core_news_lg v3.8.0
+🧠 Using engine 'spacy' / model: core_news_lg v3.8.0
 
 📍 Toponyms found in the PDF (8 total):
 
@@ -338,7 +396,7 @@ python geoNamesFromPdf.py -l en travel_guide.pdf
 **Output:**
 ```
 🌐 Using specified language: en
-🧠 Using model: core_web_lg v3.8.0
+🧠 Using engine 'spacy' / model: core_web_lg v3.8.0
 
 📍 Toponyms found in the PDF (12 total):
 
@@ -395,7 +453,7 @@ python geoNamesFromPdf.py --install-language es
    You can now process ES documents.
 ```
 
-Note: Before installing, make sure to uncomment the Spanish entry in the `LANGUAGE_MODELS` dictionary in `geoNamesFromPdf.py`.
+All languages in the table below are pre-configured in the `LANGUAGE_MODELS` dictionary in `core.py`; you only need to download the model.
 
 ### Example 5: Processing Specific Pages
 
@@ -410,7 +468,7 @@ python geoNamesFromPdf.py document.pdf -p "10-50"
 ```
 📄 Processing pages: 10-50
 🌐 Detected language: en
-🧠 Using model: core_web_lg v3.8.0
+🧠 Using engine 'spacy' / model: core_web_lg v3.8.0
 
 📍 Toponyms found in the PDF (15 total):
 
@@ -475,14 +533,17 @@ The tool comes pre-configured with support for multiple languages. Simply instal
 
 ### Adding More Languages
 
-To add languages not listed above, edit the `LANGUAGE_MODELS` dictionary in `geoNamesFromPdf.py` and add the appropriate spaCy model. Available models can be found at: https://spacy.io/models
+To add languages not listed above, edit the `LANGUAGE_MODELS` dictionary in `core.py` and add the appropriate spaCy model. Available models can be found at: https://spacy.io/models
 
 ## 🔧 Command-Line Options
 
 ```
-usage: geoNamesFromPdf.py [-h] [-l LANGUAGE] [-p PAGES] [--list-languages]
-                          [--install-language LANG_CODE] [--skip-setup]
-                          [--gazetteer GAZETTEER] [--exclude EXCLUDE]
+usage: geoNamesFromPdf.py [-h] [-l LANGUAGE] [-p PAGES]
+                          [--engine {spacy,spacy-trf,gliner}] [--no-ner]
+                          [-f {txt,csv,json,geojson}] [-o FILE] [--details]
+                          [--list-languages] [--install-language LANG_CODE]
+                          [--skip-setup] [--gazetteer GAZETTEER]
+                          [--exclude EXCLUDE]
                           [pdf_path]
 
 positional arguments:
@@ -496,8 +557,17 @@ options:
   -p PAGES, --pages PAGES
                         Page range(s) to process (e.g., '5', '5-10', '5-10, 12-14').
                         If not specified, all pages are processed.
+  --engine {spacy,spacy-trf,gliner}
+                        Extraction engine, all offline (default: spacy).
+  --no-ner             Disable NER; use the gazetteer only (requires --gazetteer).
+  -f, --format {txt,csv,json,geojson}
+                        Output format (default: txt).
+  -o FILE, --output FILE
+                        Write results to FILE instead of stdout.
+  --details            With --format txt, also show label / count / pages.
   --gazetteer GAZETTEER
-                        Path to a gazetteer file for custom place name extraction
+                        Path to a gazetteer file (.txt, or .csv/.tsv with
+                        name/id/lat/lon columns).
   --exclude EXCLUDE     Comma-separated list of toponyms to exclude from extraction
   --list-languages      List all available language models and exit
   --install-language LANG_CODE
@@ -508,11 +578,15 @@ options:
 
 ## 📊 How It Works
 
-1. **PDF Text Extraction**: Uses PyMuPDF to extract text from PDF documents
-2. **Language Detection**: Analyzes text to detect the language (using langdetect)
-3. **NLP Model Loading**: Loads the appropriate spaCy language model
-4. **Named Entity Recognition**: Identifies geographic entities (GPE, LOC, FAC)
-5. **Post-processing**: Removes duplicates and sorts results alphabetically
+All extraction logic lives in `core.py` and is shared by the CLI
+(`geoNamesFromPdf.py`) and the GUI (`gui.py`).
+
+1. **PDF Text Extraction**: PyMuPDF extracts text page by page (optionally limited to `--pages`)
+2. **Language Detection**: `langdetect` (fixed seed) detects the language, unless `-l` is given
+3. **Model Loading**: a NER-only spaCy pipeline is loaded and cached (parser/tagger/lemmatizer are dropped for speed)
+4. **Named Entity Recognition**: geographic entities (`GPE`, `LOC`, `FAC`) are collected per page, with mention counts and page numbers
+5. **Gazetteer Matching**: optional single-pass, word-boundary, case-insensitive matching; coordinates/identifiers are attached when present
+6. **Post-processing**: `--exclude` names are dropped (case-insensitive), results are de-duplicated and sorted, then serialised (`txt`/`csv`/`json`/`geojson`)
 
 ### Entity Types Detected
 
@@ -526,6 +600,15 @@ options:
 2. **Quality of PDF**: Clear, well-formatted PDFs yield better results
 3. **Text-based PDFs**: Scanned images require OCR preprocessing (not included)
 4. **Multiple languages**: If your document contains multiple languages, the tool will detect the primary language
+5. **Ancient / dead languages**: `langdetect` has no model for Latin, Ancient Greek, etc. and will guess wrongly. Pass `-l` explicitly, or use `--no-ner --gazetteer` for deterministic matching.
+6. **Large books**: text is processed page by page, so documents of any length are fine.
+
+## 🧪 Development
+
+```bash
+pip install pytest
+python -m pytest        # offline unit tests, no model downloads needed
+```
 
 ## 🐛 Troubleshooting
 
@@ -572,11 +655,15 @@ python geoNamesFromPdf.py document.pdf
 
 ## 📦 Dependencies
 
-- **PyMuPDF** (fitz) - PDF text extraction
+- **PyMuPDF** (`import pymupdf`) - PDF text extraction
 - **spaCy** - Natural language processing and NER
 - **langdetect** - Automatic language detection
+- **PyQt5** - GUI (only needed for `gui.py`)
 - **en_core_web_lg** - English language model (large)
 - **it_core_news_lg** - Italian language model (large)
+
+Optional: `spacy-transformers` (`--engine spacy-trf`), `gliner` + `gliner-spacy`
+(`--engine gliner`), `pytest` (tests).
 
 ## 📝 License
 
@@ -627,5 +714,5 @@ For issues or questions:
 
 ---
 
-**Version**: 1.0  
-**Last Updated**: October 2025
+**Version**: 1.1  
+**Last Updated**: August 2026
