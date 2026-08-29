@@ -147,11 +147,58 @@ class PdfPage:
     text: str
 
 
-def extract_pages(pdf_path, page_ranges: Optional[Iterable[int]] = None):
+def _open_document(source):
+    """Open a PDF from a filesystem path or from an in-memory byte string.
+
+    Args:
+        source: a path (``str`` / ``os.PathLike``) or the raw PDF bytes
+            (``bytes`` / ``bytearray`` / ``memoryview``).
+
+    Raises:
+        MissingDependency: if PyMuPDF is not installed.
+        FileNotFoundError: if ``source`` is a path that does not exist.
+        TypeError: if ``source`` is neither a path nor bytes.
+    """
+    try:
+        import pymupdf
+    except ImportError as exc:  # pragma: no cover - exercised only without deps
+        raise MissingDependency(
+            "PyMuPDF is required to read PDF files (pip install PyMuPDF)"
+        ) from exc
+
+    import os
+    if isinstance(source, (str, os.PathLike)):
+        if not os.path.isfile(source):
+            # PyMuPDF raises its own RuntimeError subclass here; normalise it to
+            # the builtin so callers can rely on one well-known exception type.
+            raise FileNotFoundError(source)
+        return pymupdf.open(source)
+    if isinstance(source, (bytes, bytearray, memoryview)):
+        return pymupdf.open(stream=bytes(source), filetype="pdf")
+    raise TypeError(f"unsupported PDF source type: {type(source).__name__}")
+
+
+def _pages_from_doc(doc, page_ranges):
+    """Pull the wanted pages out of an already-open PyMuPDF document."""
+    pages: list[PdfPage] = []
+    skipped: list[int] = []
+    total = len(doc)
+    wanted = range(total) if page_ranges is None else sorted(set(page_ranges))
+    for idx in wanted:
+        if idx < 0 or idx >= total:
+            skipped.append(idx + 1)
+            continue
+        text = doc[idx].get_text()
+        if text and text.strip():
+            pages.append(PdfPage(number=idx + 1, text=text))
+    return pages, skipped
+
+
+def extract_pages(source, page_ranges: Optional[Iterable[int]] = None):
     """Extract text from a PDF, page by page.
 
     Args:
-        pdf_path: Path to the PDF file.
+        source: path to the PDF file, or the raw PDF bytes.
         page_ranges: Iterable of 0-indexed page indices to keep, or ``None``
             for every page.
 
@@ -162,37 +209,13 @@ def extract_pages(pdf_path, page_ranges: Optional[Iterable[int]] = None):
 
     Raises:
         MissingDependency: if PyMuPDF is not installed.
-        FileNotFoundError: if ``pdf_path`` does not exist.
+        FileNotFoundError: if ``source`` is a path that does not exist.
     """
+    doc = _open_document(source)
     try:
-        import pymupdf
-    except ImportError as exc:  # pragma: no cover - exercised only without deps
-        raise MissingDependency(
-            "PyMuPDF is required to read PDF files (pip install PyMuPDF)"
-        ) from exc
-
-    import os
-    if not os.path.isfile(pdf_path):
-        # PyMuPDF raises its own RuntimeError subclass here; normalise it to the
-        # builtin so callers can rely on a single, well-known exception type.
-        raise FileNotFoundError(pdf_path)
-
-    pages: list[PdfPage] = []
-    skipped: list[int] = []
-    with pymupdf.open(pdf_path) as doc:
-        total = len(doc)
-        if page_ranges is None:
-            wanted = range(total)
-        else:
-            wanted = sorted(set(page_ranges))
-        for idx in wanted:
-            if idx < 0 or idx >= total:
-                skipped.append(idx + 1)
-                continue
-            text = doc[idx].get_text()
-            if text and text.strip():
-                pages.append(PdfPage(number=idx + 1, text=text))
-    return pages, skipped
+        return _pages_from_doc(doc, page_ranges)
+    finally:
+        doc.close()
 
 
 # --------------------------------------------------------------------------- #
@@ -581,15 +604,16 @@ class GazetteerMatcher:
 # Orchestration
 # --------------------------------------------------------------------------- #
 
-def analyze(pdf_path, *, language: Optional[str] = None,
+def analyze(source, *, language: Optional[str] = None,
             pages: Optional[str] = None, gazetteer=None,
             exclude: Optional[Iterable[str]] = None,
             engine: str = "spacy", use_ner: bool = True,
-            labels=DEFAULT_NER_LABELS) -> AnalysisResult:
+            labels=DEFAULT_NER_LABELS,
+            source_name: Optional[str] = None) -> AnalysisResult:
     """Run the full extraction pipeline on a single PDF.
 
     Args:
-        pdf_path: path to the PDF.
+        source: path to the PDF file, or the raw PDF bytes.
         language: force a language code; ``None`` auto-detects.
         pages: page specification string (see :func:`parse_page_ranges`).
         gazetteer: path to a gazetteer file, a pre-loaded list of
@@ -600,28 +624,29 @@ def analyze(pdf_path, *, language: Optional[str] = None,
         use_ner: set to ``False`` for gazetteer-only extraction (no model
             download or language detection needed).
         labels: entity labels to keep (spaCy) / to ask for (GLiNER).
+        source_name: label for the result / logs when ``source`` is bytes.
 
     Returns:
         An :class:`AnalysisResult`.
     """
-    result = AnalysisResult(pdf_path=str(pdf_path), engine=engine)
+    import os
+    if source_name:
+        display = source_name
+    elif isinstance(source, (str, os.PathLike)):
+        display = str(source)
+    else:
+        display = "<pdf bytes>"
+    result = AnalysisResult(pdf_path=display, engine=engine)
 
-    # -- resolve page count for validation -------------------------------- #
+    # -- open once, read the wanted pages -------------------------------- #
+    doc = _open_document(source)  # FileNotFoundError / MissingDependency / TypeError
     try:
-        import pymupdf
-        with pymupdf.open(pdf_path) as doc:
-            total_pages = len(doc)
-    except ImportError as exc:
-        raise MissingDependency(
-            "PyMuPDF is required to read PDF files (pip install PyMuPDF)"
-        ) from exc
-    except FileNotFoundError:
-        raise
-    except Exception:
-        total_pages = None
-
-    page_ranges = parse_page_ranges(pages, max_pages=total_pages) if pages else None
-    pdf_pages, skipped = extract_pages(pdf_path, page_ranges)
+        total_pages = len(doc)
+        page_ranges = (parse_page_ranges(pages, max_pages=total_pages)
+                       if pages else None)
+        pdf_pages, skipped = _pages_from_doc(doc, page_ranges)
+    finally:
+        doc.close()
     result.pages_processed = [p.number for p in pdf_pages]
     result.pages_skipped = skipped
     if skipped:

@@ -279,7 +279,78 @@ Notes and tips
 - Gazetteeer files should be plain UTF-8 text with one place name per line.
 - The GUI supports both spaCy-based extraction and gazetteer matching; if no gazetteer is loaded the tool still runs spaCy NER.
 - For a lightweight distribution, consider using the GUI in "gazetteer-only" mode by avoiding installation of spaCy models — this reduces package size (see the Packaging section below).
- 
+
+## 🗂️ Zotero assistant
+
+`zotero_assistant.py` is a second graphical tool that helps you tag the items of
+a **Zotero library** with the places mentioned in their attached PDF(s), reusing
+the geographic tags you already use.
+
+It assumes a tagging convention: geographic tags are prefixed with `@`
+(`@Butrint`, `@Çuka e Ajtoit`, …). Those existing `@` tags are fed to the
+extractor as a gazetteer.
+
+Pick a library and its records that are not yet tagged `geodone` appear in a
+list on the left (with a title filter). Select one and you get:
+
+- **existing `@` tags that occur in the text** — pre-checked, with occurrence
+  count and page numbers;
+- **new place candidates** found by NER (labels `GPE` / `LOC`) that are not yet
+  in your vocabulary — unchecked. Each has an **editable target field** (default
+  `@Name`) so you can normalise it, and when it looks close to an existing tag a
+  one-click **↳ @ExistingTag** button adopts that tag instead.
+
+*Save selected + Next* writes the approved tags, sorts the item's tag list
+alphabetically, adds `geodone` (so the record leaves the list) and moves to the
+next row. *Skip and don't ask again* just writes `geodone`. *Skip (pending)*
+leaves the record in the list for a later session. Every action is appended to a
+`zotero-assistant-log-*.csv` file in the working directory.
+
+### Per-record language
+
+The middle column has a **Language** selector and a **Re-analyze** button. The
+language is auto-detected by default, but spaCy only has NER models for the
+languages in `LANGUAGE_MODELS`; for anything else (Albanian, Latin, Ancient
+Greek, …) it silently falls back to English, which produces many false
+positives — a warning says so. Pick the right language and Re-analyze, or choose
+**"— no NER (gazetteer only) —"** to match only against your `@` tags, with no
+NER noise. The choice carries over to the next record (handy for a run of
+same-language articles).
+
+### Scanned PDFs / OCR
+
+A PDF with no text layer can't be analysed. If [`ocrmypdf`](https://ocrmypdf.readthedocs.io/)
+is on your `PATH`, a **Run OCR (ocrmypdf)** button appears: it OCRs the file
+in-memory (using the selected language), then re-analyses — the attachment in
+Zotero is left unchanged. After a successful OCR a **Save searchable PDF…**
+button lets you write the OCR'd file to disk (re-import it into Zotero yourself
+if you want it there). Otherwise, OCR the file with your own tool, reopen the
+record and Re-analyze.
+
+### Requirements
+
+- **Zotero 10.0 or newer** (the local write API landed in 10.0).
+- In Zotero: *Settings → Advanced →* enable **"Allow other applications on this
+  computer to communicate with Zotero"**.
+- `pip install httpx` (already in `requirements.txt`).
+- *Optional:* `ocrmypdf` on `PATH` for the OCR button (`brew install ocrmypdf`,
+  `apt install ocrmypdf`, …).
+
+Everything runs against Zotero's **local API** (`http://localhost:23119`): no
+network, no `zotero.org` account needed. On the first save Zotero shows a
+one-time dialog asking you to grant write access — choose *Always Allow* to
+avoid repeating it.
+
+```bash
+python zotero_assistant.py
+```
+
+The library dropdown lists your personal library and any group libraries. Files
+are read from Zotero's local storage: for a group whose files are synced on
+demand, enable *Settings → Sync → "Download files"* (or pre-download the PDFs of
+the items you will process) — records whose PDF is not on disk are shown with a
+notice and can only be skipped.
+
 ## ⚙️ Quick setup script
 
 A small helper script is provided at `scripts/setup_and_run.sh` to make it easy for non-technical users to get started. The script will clone (or update) the repository, create a virtual environment, install Python dependencies from `requirements.txt`, and — optionally — run the GUI.
@@ -579,7 +650,8 @@ options:
 ## 📊 How It Works
 
 All extraction logic lives in `core.py` and is shared by the CLI
-(`geoNamesFromPdf.py`) and the GUI (`gui.py`).
+(`geoNamesFromPdf.py`), the GUI (`gui.py`) and the Zotero assistant
+(`zotero_assistant.py`, with `zotero.py` for the local-API access).
 
 1. **PDF Text Extraction**: PyMuPDF extracts text page by page (optionally limited to `--pages`)
 2. **Language Detection**: `langdetect` (fixed seed) detects the language, unless `-l` is given
@@ -658,7 +730,8 @@ python geoNamesFromPdf.py document.pdf
 - **PyMuPDF** (`import pymupdf`) - PDF text extraction
 - **spaCy** - Natural language processing and NER
 - **langdetect** - Automatic language detection
-- **PyQt5** - GUI (only needed for `gui.py`)
+- **PyQt5** - GUI (`gui.py`, `zotero_assistant.py`)
+- **httpx** - Zotero local-API client (`zotero_assistant.py`)
 - **en_core_web_lg** - English language model (large)
 - **it_core_news_lg** - Italian language model (large)
 

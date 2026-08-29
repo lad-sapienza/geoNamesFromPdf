@@ -179,6 +179,22 @@ def test_analyze_no_ner_without_gazetteer_errors(sample_pdf):
         core.analyze(sample_pdf, use_ner=False)
 
 
+def test_analyze_accepts_pdf_bytes(sample_pdf):
+    import pathlib
+    data = pathlib.Path(sample_pdf).read_bytes()
+    gaz = [core.GazEntry(name=n) for n in ("Butrint", "Epirus")]
+    result = core.analyze(data, gazetteer=gaz, use_ner=False,
+                          source_name="item42:paper.pdf")
+    assert result.pdf_path == "item42:paper.pdf"
+    assert "Butrint" in result.names and "Epirus" in result.names
+    assert result.pages_processed == [1, 2]
+
+
+def test_analyze_rejects_bad_source_type():
+    with pytest.raises(TypeError):
+        core.analyze(1234, gazetteer=[core.GazEntry(name="X")], use_ner=False)
+
+
 # --------------------------------------------------------------------------- #
 # serializers
 # --------------------------------------------------------------------------- #

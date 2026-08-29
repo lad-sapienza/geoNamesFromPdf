@@ -2,6 +2,7 @@ PyMuPDF>=1.24.3
 spacy>=3.8.0
 langdetect>=1.0.9
 PyQt5>=5.15.0
+httpx>=0.27          # Zotero assistant (zotero_assistant.py) — local API client
 
 # --- Optional ---
 # Alternative offline extraction engines (see README "Extraction Engines"):

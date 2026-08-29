@@ -227,3 +227,6 @@ $RECYCLE.BIN/
 .nfs*
 included.txt
 excluded.txt
+
+# Zotero assistant session logs
+zotero-assistant-log-*.csv
