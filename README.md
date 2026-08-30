@@ -24,7 +24,7 @@ Three entry points, one engine:
 |---|---|
 | `python geoNamesFromPdf.py …` | CLI: one PDF (or a folder via a shell loop) → list / CSV / JSON / GeoJSON |
 | `python gui.py` | Desktop GUI for a single PDF, with interactive include/exclude lists |
-| `python zotero_assistant.py` | Review a Zotero library record by record and write geographic tags back |
+| `python zotero_assistant.py` | Review a Zotero library record by record and write geographic tags back (requires the `@`-prefix tag convention — see that section) |
 
 Core capabilities:
 
@@ -260,13 +260,16 @@ python gui.py
 
 ## 🗂️ Zotero assistant (`zotero_assistant.py`)
 
+> **Tagging convention — required.** The assistant identifies your geographic
+> tags by a leading `@` (`@Butrint`, `@Çuka e Ajtoit`, …). It reads every `@`
+> tag in the library as its matching vocabulary and writes each new place you
+> approve as `@Name`. If your library does not prefix place tags with `@`, the
+> assistant has nothing to reuse — adopt the convention (e.g. batch-rename your
+> place tags in Zotero) before running it.
+
 A second graphical tool that helps you tag the items of a **Zotero library** with
 the places mentioned in their attached PDF(s), reusing the geographic tags you
-already keep.
-
-It assumes a tagging convention: geographic tags are prefixed with `@`
-(`@Butrint`, `@Çuka e Ajtoit`, …). Those existing `@` tags are fed to the
-extractor as a gazetteer.
+already keep. Those existing `@` tags are fed to the extractor as a gazetteer.
 
 Pick a library and its records not yet tagged `geodone` appear in a filterable
 list on the left. Select one and you get two check-lists:
