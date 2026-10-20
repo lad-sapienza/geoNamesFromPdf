@@ -178,6 +178,25 @@ def _open_document(source):
     raise TypeError(f"unsupported PDF source type: {type(source).__name__}")
 
 
+_HYPHEN_WRAP_RE = re.compile(r"(\w)-[ \t]*\n(\w)", re.UNICODE)
+
+
+def _dehyphenate(text: str) -> str:
+    """Join words PyMuPDF split across a line-wrap hyphen.
+
+    ``get_text()`` reports a line-end hyphen literally, so a word wrapped as
+    "Duka-\\ngjinit" reads as "Duka-\\ngjinit" rather than "Dukagjinit". Left
+    alone, the word-boundary gazetteer/NER matching sees "Duka" followed by a
+    non-word character (the hyphen) and treats it as a real, standalone match
+    — a false positive for any short known name that happens to be a prefix
+    of a longer word broken this way. Joining "<word>-\\n<word>" into one
+    word (dropping the hyphen) is the standard fix; it can occasionally merge
+    a genuine end-of-line hyphenated compound, which is the accepted
+    trade-off versus the much more common false-match failure mode.
+    """
+    return _HYPHEN_WRAP_RE.sub(r"\1\2", text)
+
+
 def _pages_from_doc(doc, page_ranges):
     """Pull the wanted pages out of an already-open PyMuPDF document."""
     pages: list[PdfPage] = []
@@ -188,7 +207,7 @@ def _pages_from_doc(doc, page_ranges):
         if idx < 0 or idx >= total:
             skipped.append(idx + 1)
             continue
-        text = doc[idx].get_text()
+        text = _dehyphenate(doc[idx].get_text())
         if text and text.strip():
             pages.append(PdfPage(number=idx + 1, text=text))
     return pages, skipped
