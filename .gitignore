@@ -230,3 +230,11 @@ excluded.txt
 
 # Zotero assistant session logs
 zotero-assistant-log-*.csv
+
+# Local-only batch tagging tool and its report/audit output (kept out of the repo for now)
+zotero_batch_tag.py
+audit_risky_tags.py
+missing-pdfs*.csv
+geo-candidates.csv
+campione-candidati.csv
+audit-tag-a-rischio.csv
